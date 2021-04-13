@@ -548,13 +548,14 @@ final void tryTerminate() {
        /*
         * 下面这三种状态直接return，结束执行
         * 1.线程池处于RUNNING状态
-        * 2.线程池状态大于TIDYING
+        * 2.线程池状态为TIDYING或者TERMINATED
         * 3.线程池==SHUTDOWN并且workQUeue不为空
         */
         if (isRunning(c) ||
             runStateAtLeast(c, TIDYING) ||
             (runStateOf(c) == SHUTDOWN && ! workQueue.isEmpty()))
             return;
+        // 执行到这里线程池只剩下: 1.STOP状态，2.SHUTDOWN并且workQUeue为空
         if (workerCountOf(c) != 0) { // Eligible to terminate
             // 工作线程不为0
             // 打断工作线程
@@ -564,7 +565,7 @@ final void tryTerminate() {
         final ReentrantLock mainLock = this.mainLock;
         mainLock.lock();
       	/*
-      	 * 下面的逻辑
+      	 * 下面的逻辑根据这两种状态去理解
          * TIDYING:    所有的任务执行完了, 队列中的任务也是0，此时将会调用terminated()
  				 * TERMINATED: terminated()方法执行完毕  
  				 */
@@ -589,7 +590,34 @@ final void tryTerminate() {
 }
 ```
 
+**ThreadPoolExecutor#interruptIdleWorkers**
 
+```java
+/**
+ * onlyOne为true只中断一个，否则全部中断
+ */
+private void interruptIdleWorkers(boolean onlyOne) {
+    final ReentrantLock mainLock = this.mainLock;
+    mainLock.lock();
+    try {
+        for (Worker w : workers) {
+            Thread t = w.thread;
+            if (!t.isInterrupted() && w.tryLock()) {
+                try {
+                    t.interrupt();
+                } catch (SecurityException ignore) {
+                } finally {
+                    w.unlock();
+                }
+            }
+            if (onlyOne)
+                break;
+        }
+    } finally {
+        mainLock.unlock();
+    }
+}
+```
 
 最后我们分析下线程池的关闭**ThreadPoolExecutor#shutdown**
 
@@ -613,8 +641,6 @@ public void shutdown() {
 }
 ```
 
-
-
 **ThreadPoolExecutor#advanceRunState**
 
 ```java
@@ -629,9 +655,20 @@ private void advanceRunState(int targetState) {
 }
 ```
 
+**ThreadPoolExecutor#interruptIdleWorkers**中断所有线程（阻塞的将会被唤醒，抛出异常；非阻塞会被标记为中断）
+
+```java
+private void interruptIdleWorkers() {
+  // 中断所有线程
+  interruptIdleWorkers(false);
+}
+```
+
+分析到这里整个RUNNING>>SHUTDOWN>>TINYING>>TERMINATED整个状态扭转都已经很清晰，但是STOP状态呢？shutdownNow()方法会涉及到这个状态。
 
 
-分析到这里整个RUNNING>>SHUTDOWN>>TINYING>>TERMINATED整个状态扭转都已经很清晰，但是STOP状态呢？shutdownNow会涉及到这个状态，直接上代码。**ThreadPoolExecutor#advanceRunState**
+
+下面继续**ThreadPoolExecutor#shutdownNow**
 
 ```java
   public List<Runnable> shutdownNow() {
@@ -656,8 +693,6 @@ private void advanceRunState(int targetState) {
 }
 ```
 
-
-
 **ThreadPoolExecutor#interruptWorkers**进行中断线程
 
 ```java
@@ -674,8 +709,6 @@ private void interruptWorkers() {
 }
 ```
 
-
-
 **ThreadPoolExecutor.Worker#interruptIfStarted**
 
 ```java
@@ -691,8 +724,6 @@ void interruptIfStarted() {
     }
 }
 ```
-
-
 
 **ThreadPoolExecutor#drainQueue**
 
@@ -715,6 +746,6 @@ private List<Runnable> drainQueue() {
 }
 ```
 
-
+这里总结一下shutdownNow()方法，先更新线程状态为STOP，然后将线程池中的线程标记为中断状态，接着移除队列中的任务。
 
 参考资料: [Java线程池实现原理及其在美团业务中的实践](https://tech.meituan.com/2020/04/02/java-pooling-pratice-in-meituan.html)
