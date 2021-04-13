@@ -1,6 +1,6 @@
 # 线程池
 
-线程池是高并发中接触和使用较多的一项工具之一，本篇主要是进行ThreadPoolExecutor的源码分析， 没有太多的文字分析详细请查看代码中注释。
+线程池是高并发中接触和使用较多的一项工具之一，本篇主要是进行ThreadPoolExecutor的源码分析， 没有太多的文字分析，详细步骤分析请查看代码中注释。
 
 
 
@@ -65,7 +65,7 @@ private volatile RejectedExecutionHandler handler;
 | PriorityBlockingQueue | 优先级无界队列，必须手动指定comparator（或者去实现java.lang.Comparable接口），不然队列在内部排序会报错cannot be cast to java.lang.Comparable。 |
 | SynchronousQueue      | 一个不存储元素的阻塞队列。每个插入操作必须等到另一个线程调用移除操作，否则插入操作一直处于阻塞状态，支持公平锁和非公平锁。吞吐量通常要高于LinkedBlockingQueue，静态工厂方法Executors.newCachedThreadPool()就使用了这个队列。 |
 | DelayQueue            | 一个实现PriorityBlockingQueue延迟获取的无界队列，在创建元素时，可以指定多久才能从队列中获取当前元素。只有延时期满后才能从队列中获取元素。 |
-| LinkedTransferQueue   |                                                              |
+| LinkedTransferQueue   | 一个由链表结构组成的无界队列，相对于其他的队列，LinkedTransferQueue队列多了transfer和tryTransfer方法。 |
 | LinkedBlockingDeque   | 一个由链表实现的双向阻塞队列有界对接，默认最大长度为Integer.MAX_VALUE。队列头部和尾部可以添加和移除元素，多线程并发时，可以将锁的竞争最多降到一半。 |
 
  
@@ -133,13 +133,15 @@ private static int ctlOf(int rs, int wc) { return rs | wc; }
 
 在进行源码分析之前，我们先来看看代码**整体执行流程**
 
-![ThreadPoolExecutor-执行流程](/Users/zhusidao/Documents/wiki/zhusidao.github.io.wiki/images/ThreadPoolExecutor-执行流程.png)
+![ThreadPoolExecutor-执行流程](ThreadPoolExecutor.assets/ThreadPoolExecutor-执行流程.png)
 
-1.当有新的任务来的时候，直接创建新的去执行，如果不超过核心
+1.当有新的任务来的时候，直接创建新的去执行(如果不超过核心)。执行完后，阻塞队列进行获取任务继续执行。
 
-2.如果已经到达创建的最大线程数，此时任务进行入队进行缓冲，等待被执行
+2.如果已经超过核心线程数，此时任务进行入队进行缓冲，等待被执行。
 
-3.等
+3.如果阻塞队列满了，尝试开启最大线程数去执行任务。执行完，如果缓冲队列为空，回收线程（超过核心线程数的部分），否则阻塞队列进行获取任务，继续执行。
+
+4.如果无法再添加线程，只能进行任务拒绝。
 
 
 
@@ -632,7 +634,7 @@ private void advanceRunState(int targetState) {
 分析到这里整个RUNNING>>SHUTDOWN>>TINYING>>TERMINATED整个状态扭转都已经很清晰，但是STOP状态呢？shutdownNow会涉及到这个状态，直接上代码。**ThreadPoolExecutor#advanceRunState**
 
 ```java
-public List<Runnable> shutdownNow() {
+  public List<Runnable> shutdownNow() {
     List<Runnable> tasks;
     final ReentrantLock mainLock = this.mainLock;
     mainLock.lock();
@@ -641,6 +643,7 @@ public List<Runnable> shutdownNow() {
         checkShutdownAccess();
         // 更新线程池状态为stop
         advanceRunState(STOP);
+        // 中断正在执行的任务
         interruptWorkers();
         // 移除阻塞队列中所以任务
         tasks = drainQueue();
@@ -650,6 +653,42 @@ public List<Runnable> shutdownNow() {
     // 尝试终止
     tryTerminate();
     return tasks;
+}
+```
+
+
+
+**ThreadPoolExecutor#interruptWorkers**进行中断线程
+
+```java
+private void interruptWorkers() {
+    final ReentrantLock mainLock = this.mainLock;
+    // 加锁
+    mainLock.lock();
+    try {
+        for (Worker w : workers)
+            w.interruptIfStarted();
+    } finally {
+        mainLock.unlock();
+    }
+}
+```
+
+
+
+**ThreadPoolExecutor.Worker#interruptIfStarted**
+
+```java
+void interruptIfStarted() {
+    Thread t;
+    if (getState() >= 0 && (t = thread) != null && !t.isInterrupted()) {
+        // running状态或者shutdown状态，线程不为空 && 线程没有标记为中断状态
+        try {
+            // 标记线程为中断状态
+            t.interrupt();
+        } catch (SecurityException ignore) {
+        }
+    }
 }
 ```
 
@@ -679,4 +718,3 @@ private List<Runnable> drainQueue() {
 
 
 参考资料: [Java线程池实现原理及其在美团业务中的实践](https://tech.meituan.com/2020/04/02/java-pooling-pratice-in-meituan.html)
-
