@@ -129,9 +129,7 @@ private static int ctlOf(int rs, int wc) { return rs | wc; }
 
 **状态流转图**
 
-![ThreadPoolExecutor-状态图](/Users/zhusidao/Documents/wiki/zhusidao.github.io.wiki/images/ThreadPoolExecutor-状态图.png)
-
- 
+![ThreadPoolExecutor-状态图](ThreadPoolExecutor.assets/ThreadPoolExecutor-状态图.png) 
 
 在进行源码分析之前，我们先来看看代码**整体执行流程**
 
