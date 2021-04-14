@@ -1,8 +1,6 @@
 # HashMap源码分析
 
-```
-最近看看了相关的JAVA集合类，这里是自己的jdk1.8 HashMap的个人学习和理解。
-```
+最近看看了相关的JAVA集合类，这里是自己的jdk1.8 HashMap的源码个人学习和理解。
 
 ## 1.存储结构-字段
 
@@ -10,7 +8,7 @@
 
 从结构实现来讲，HashMap是数组+链表+红黑树（JDK1.8增加了红黑树部分，优化查询速度）实现的，如下如所示：
 
-![img](file:////Users/zhusidao/Library/Group%20Containers/UBF8T346G9.Office/TemporaryItems/msohtmlclip/clip_image001.png)
+<img src="hashmap.assets/image-20210414091743722.png" style="zoom:50" />
 
 ### 2.java代码中的数据结构定义如下
 
@@ -40,7 +38,7 @@ int threshold;         // 所能容纳最大键值对个数
 
 put方法执行过程可以通过下图来理解：
 
-![img](file:////Users/zhusidao/Library/Group%20Containers/UBF8T346G9.Office/TemporaryItems/msohtmlclip/clip_image002.png)
+![image-20210414092335785](hashmap.assets/image-20210414092335785.png)
 
 1.首先判断是否为空，为空则直接进行扩容操作。
 

@@ -1,5 +1,7 @@
 # ReentrantLock源码分析
 
+**前言**: java除了使用关键字synchronized外，还可以使用ReentrantLock实现独占锁的功能。而且ReentrantLock相比synchronized而言功能更加丰富，使用起来更为灵活，也更适合复杂的并发场景。这篇文章主要是从使用的角度来分析一下ReentrantLock。
+
 可重入锁，继承于[Lock](http://pms.ipo.com/display/JGY/lock)，对于ReentrantLock需要了解到：
 
 1.通常这样使用：
@@ -31,16 +33,21 @@ public ReentrantLock(boolean fair) {
 
 ### 结构分析
 
-```
 ReentrantLock是通过AbstractQueuedSynchronizer实现，AbstractQueuedSynchronizer核心的数据结构是一个双向队列，
 具体结构示意图如图：
-```
 
-![img](file:////Users/zhusidao/Library/Group%20Containers/UBF8T346G9.Office/TemporaryItems/msohtmlclip/clip_image001.png)
+![AQS队列示意图](ReentrantLock.assets/AQS队列示意图.png)
 
-```java
+
+
+从这里可以看出，首节点是一个thread=null的节点（该线程正在占据锁），并且前面三个节点状态都为-1，获取锁的顺序是A->B->C（非公平锁是先获取锁，如果获取不到就入队）；当有新的节点入队的时候，会将thread为C节点中状态变为waitStatus=-1，并且将新的节点变为尾节点。当释放锁后，锁的状态为0的时候，A会被唤醒，并且将第一个节点waitStatus=0，并且会将A节点唤醒，将head节点回收，将A节点变为head节点。 
+
+
+
 AbstractQueuedSynchronizer中定义双向队列中Node节点中的几个重要状态(这里我们只列举出ReentrantLock中所使用到的状态)，
 状态说明见代码中的注释
+
+```java
 // 共享模式
 static final Node SHARED = new Node();
 // 独占锁
@@ -66,7 +73,9 @@ volatile Node next;
 volatile Thread thread;
 ```
 
-### 这里开始上源码分析吧
+
+
+### 下面开始上源码分析吧
 
 #### **lock**
 
@@ -143,6 +152,8 @@ protected final boolean tryAcquire(int acquires) {
 }
 ```
 
+> 从这里可以看出，当state=0说明为无锁状态，当state>1说明锁发生重入
+
 **hasQueuedPredecessors**
 
 ```java
@@ -197,6 +208,7 @@ private Node enq(final Node node) {
         // 空队列
         if (t == null) { // Must initialize
             if (compareAndSetHead(new Node()))
+                // 创建一个哨兵节点
                 tail = head;
         } else {
             // 添加节点到尾部
@@ -221,7 +233,9 @@ final boolean acquireQueued(final Node node, int arg) {
         for (;;) {
             final Node p = node.predecessor();
             // 如果前一个节点是队列的head，尝试去获取锁
+            // 队列中的第一个节点是哨兵节点，所以都是从第二个节点开始进行获取锁
             if (p == head && tryAcquire(arg)) {
+              	// 已经获取到锁了，所以将第二个节点置为头部节点
                 setHead(node);
                 p.next = null; // help GC
                 failed = false;
@@ -244,12 +258,6 @@ final boolean acquireQueued(final Node node, int arg) {
 
  **shouldParkAfterFailedAcquire**方法需要说明的地方：
 
-1.当前添加的node节点的前一个节点如果状态为SIGNAL(-1)，返回true，执行parkAndCheckInterrupt使先当前线程进入block状态
-
-2.如果前一个节点的状态大于0（说明为1，已取消状态），就将队列前面的状态大于1的节点都剔除掉
-
-3.否则就将前一个节点的状态变为SIGNAL(-1)
-
 ```java
 private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
     int ws = pred.waitStatus;
@@ -261,7 +269,7 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
         return true;
     if (ws > 0) {
         /*
-         * 前一个node的状态已经被取消，剔除前面已经被取消的node
+         * 前一个node的状态>0,说明已经被取消，剔除队列中已经被取消的node
          */
         do {
             node.prev = pred = pred.prev;
@@ -277,6 +285,12 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
     return false;
 }
 ```
+
+> 1.当前添加的node节点的前一个节点如果状态为SIGNAL(-1)，返回true，执行parkAndCheckInterrupt使先当前线程进入block状态
+>
+> 2.如果前一个节点的状态大于0（说明为1，已取消状态），就将队列前面的状态大于1的节点都剔除掉
+>
+> 3.否则就将前一个节点的状态变为SIGNAL(-1)
 
 **parkAndCheckInterrupt**
 
@@ -322,24 +336,19 @@ private void cancelAcquire(Node node) {
             // 将原先前置节点的后置节点置为空，这样当前节点就是一个可gc的对象了
             compareAndSetNext(pred, predNext, null);
         } else {
-            /**
-             * 这个分支稍有复杂：
-             * 走到这个分支，首先取消的结点并不是尾节点；
-             * 另外如果此前置节点也不是头结点，并且是后置节点等待资源的状态（SIGNAL），
-             * 那么将当前取消节点的后置节点，提前；
-             * 如果前置节点是头节点或者前置节点已经是取消的状态、或者前置节点设置状态位失败、或者
-             * 前置节点的内部线程是一个空，那么，
-             * 将当前取消节点的后置节点唤醒去争取资源（unparkSuccessor）
-             */
             int ws;
+          	// 如果node既不是tail，又不是head的后继节点
+        	  // 则将node的前继节点的waitStatus置为SIGNAL
             if (pred != head &&
                 ((ws = pred.waitStatus) == Node.SIGNAL ||
                  (ws <= 0 && compareAndSetWaitStatus(pred, ws, Node.SIGNAL))) &&
                 pred.thread != null) {
                 Node next = node.next;
                 if (next != null && next.waitStatus <= 0)
+                    // 并使node的前继节点指向node的后继节点（当前节点脱链）
                     compareAndSetNext(pred, predNext, next);
             } else {
+                // 如果node是head的后继节点，则直接唤醒node的后继节点
                 unparkSuccessor(node);
             }
  
@@ -348,13 +357,9 @@ private void cancelAcquire(Node node) {
     }
 ```
 
- 
+ 以上便是所有的获取锁定操作了，做一个小**acquire**的总结，相关代码执行流程如图所示：
 
-以上便是所有的获取锁定操作了，做一个小quire的总结，相关代码执行流程如图所示：
-
-![img](file:////Users/zhusidao/Library/Group%20Containers/UBF8T346G9.Office/TemporaryItems/msohtmlclip/clip_image002.png)
-
-上面整个获取锁的过程已经结束，接下来看**锁的释放**
+![image-20210414100304479](ReentrantLock.assets/image-20210414100304479.png)上面整个获取锁的过程已经结束，接下来看**锁的释放**
 
 ```java
 public void unlock() {
@@ -429,13 +434,12 @@ private void unparkSuccessor(Node node) {
 }
 ```
 
-以上就是所有ReentrantLock公平锁的实现，当线程成功持有锁的时候，state会从0变为1。
+> 以上就是所有ReentrantLock公平锁的实现，当线程成功持有锁的时候，state会从0变为1。
+>
+> 当该线程发生重入时，state会加1，而锁的释放就是依次减1，当state为0的时候，说明锁是空闲的状态。
+>
 
-当该线程发生重入时，state会加1，而锁的释放就是依次减1，当state为0的时候，说明锁是空闲的状态。
 
-方法之中用了许多CAS保证操作的原子性。
-
- 
 
 **非公平锁**和公平锁其实差不多，还是直接看其中lock方法实现， 和tryAcquire方法重写。
 
@@ -507,5 +511,82 @@ public boolean tryLock() {
     return sync.nonfairTryAcquire(1);
 }
 ```
+
+
+
+接下来看一下带参数的**tryLock(long  TimeUnit)**方法
+
+```java
+public boolean tryLock(long timeout, TimeUnit unit)
+        throws InterruptedException {
+    return sync.tryAcquireNanos(1, unit.toNanos(timeout));
+}
+```
+
+**tryAcquireNanos**
+
+```java
+/**
+ * 我们重点看一下doAcquireNanos方法
+ */
+public final boolean tryAcquireNanos(int arg, long nanosTimeout)
+        throws InterruptedException {
+    if (Thread.interrupted())
+        // 如果在获取锁的过程中被标记为中断，抛出异常
+        throw new InterruptedException();
+    /*
+     * 还是先获取锁，获取不到就会调用doAcquireNanos限定时间进行锁获取
+     */
+    return tryAcquire(arg) ||
+        doAcquireNanos(arg, nanosTimeout);
+}
+```
+
+**doAcquireNanos**
+
+```java
+/**
+ * 这里和acquireQueued方法逻辑很相似，进行简单注释
+ */
+private boolean doAcquireNanos(int arg, long nanosTimeout)
+        throws InterruptedException {
+    // 如果指定时间<=0直接返回false
+    if (nanosTimeout <= 0L)
+        return false;
+    final long deadline = System.nanoTime() + nanosTimeout;
+    // 独占的方式入队
+    final Node node = addWaiter(Node.EXCLUSIVE);
+    boolean failed = true;
+    try {
+        for (;;) {
+            final Node p = node.predecessor();
+            // 如果前一个节点是队列的head，尝试去获取锁
+            if (p == head && tryAcquire(arg)) {
+                setHead(node);
+                p.next = null; // help GC
+                failed = false;
+                return true;
+            }
+            // 计算剩余时间
+            nanosTimeout = deadline - System.nanoTime();
+            if (nanosTimeout <= 0L)
+                // 说明已经超时，返回false
+                return false;
+            // 
+            if (shouldParkAfterFailedAcquire(p, node) &&
+                nanosTimeout > spinForTimeoutThreshold)
+                // 剩余时间超过1秒，进行阻塞；否则进行自旋
+                LockSupport.parkNanos(this, nanosTimeout);
+            if (Thread.interrupted())
+                throw new InterruptedException();
+        }
+    } finally {
+        if (failed)
+            cancelAcquire(node);
+    }
+}
+```
+
+
 
 以上便是所有的源码分析， 不足之处，还望大佬指出和交流
