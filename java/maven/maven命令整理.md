@@ -10,3 +10,6 @@ dependency:tree -Dverbose
 - **mvn clean deploy依次执行了clean、resources、compile、testResources、testCompile、test、jar(打包)、install、deploy等９个阶段。**
 - mvn compile下载依赖
 
+```
+<localRepository>/Users/zhusidao/Documents/.m2/repository</localRepository>
+```

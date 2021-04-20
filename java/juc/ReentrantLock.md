@@ -2,7 +2,7 @@
 
 **前言**: java除了使用关键字synchronized外，还可以使用ReentrantLock实现独占锁的功能。而且ReentrantLock相比synchronized而言功能更加丰富，使用起来更为灵活，也更适合复杂的并发场景。这篇文章主要是从使用的角度来分析一下ReentrantLock。
 
-可重入锁，继承于[Lock](http://pms.ipo.com/display/JGY/lock)，对于ReentrantLock需要了解到：
+可重入锁，继承于Lock，对于ReentrantLock需要了解到：
 
 1.通常这样使用：
 
@@ -40,7 +40,9 @@ ReentrantLock是通过AbstractQueuedSynchronizer实现，AbstractQueuedSynchroni
 
 
 
-从这里可以看出，首节点是一个thread=null的节点（该线程正在占据锁），并且前面三个节点状态都为-1，获取锁的顺序是A->B->C（非公平锁是先获取锁，如果获取不到就入队）；当有新的节点入队的时候，会将thread为C节点中状态变为waitStatus=-1，并且将新的节点变为尾节点。当释放锁后，锁的状态为0的时候，A会被唤醒，并且将第一个节点waitStatus=0，并且会将A节点唤醒，将head节点回收，将A节点变为head节点。 
+从这里可以看出，首节点是一个thread=null的节点（该线程正在占据锁），并且前面三个节点状态都为-1，获取锁的顺序是A->B->C（非公平锁是先获取锁，如果获取不到就入队）；
+
+**节点状态变化**：当有新的节点入队的时候，会将thread为C节点中状态变为waitStatus=-1，并且将新的节点变为尾节点。当释放锁后，锁的状态为0的时候，将第一个节点waitStatus=0，并且会将A节点唤醒，将head节点回收，将A节点变为head节点。 
 
 
 
@@ -394,6 +396,7 @@ public final boolean release(int arg) {
 protected final boolean tryRelease(int releases) {
     int c = getState() - releases;
     if (Thread.currentThread() != getExclusiveOwnerThread())
+        // 如果没有当前现在没有只有锁，尝试直接进行unLock就会抛出异常
         throw new IllegalMonitorStateException();
     boolean free = false;
     // state为0，说明当前锁处于空闲状态
@@ -434,10 +437,9 @@ private void unparkSuccessor(Node node) {
 }
 ```
 
-> 以上就是所有ReentrantLock公平锁的实现，当线程成功持有锁的时候，state会从0变为1。
->
-> 当该线程发生重入时，state会加1，而锁的释放就是依次减1，当state为0的时候，说明锁是空闲的状态。
->
+以上就是所有ReentrantLock公平锁的实现，当线程成功持有锁的时候，state会从0变为1。
+
+当该线程发生重入时，state会加1，而锁的释放就是依次减1，当state为0的时候，说明锁是空闲的状态
 
 
 
@@ -589,4 +591,4 @@ private boolean doAcquireNanos(int arg, long nanosTimeout)
 
 
 
-以上便是所有的源码分析， 不足之处，还望大佬指出和交流
+以上便是所有的源码分析，本篇没有系统讲解AQS的那种变量，后面会依次介绍AQS在其他的JUC工具中的运用。
