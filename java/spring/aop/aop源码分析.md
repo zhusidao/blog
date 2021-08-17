@@ -292,10 +292,11 @@ public List<Advisor> buildAspectJAdvisors() {
          }
       }
    }
-
+  
    if (aspectNames.isEmpty()) {
       return Collections.emptyList();
    }
+   // 从缓存中获取
    List<Advisor> advisors = new ArrayList<>();
    for (String aspectName : aspectNames) {
       List<Advisor> cachedAdvisors = this.advisorsCache.get(aspectName);
@@ -380,15 +381,15 @@ public Advisor getAdvisor(Method candidateAdviceMethod, MetadataAwareAspectInsta
 
    validate(aspectInstanceFactory.getAspectMetadata().getAspectClass()); 
    // 因为我们之前把@Pointcut注解的方法跳过了，所以这边必然不会获取到@Pointcut注解
-	 // 获取带有@Pointcut, @Around, @Before, @After, @AfterReturning, @AfterThrowing的方法，
+	 // 获取方法上注解（@Pointcut、@Around、@Before、@After、@AfterReturning、@AfterThrowing）的表示式，
    // 然后封装为AspectJExpressionPointcut对象
    AspectJExpressionPointcut expressionPointcut = getPointcut(
          candidateAdviceMethod, aspectInstanceFactory.getAspectMetadata().getAspectClass());
    if (expressionPointcut == null) {
-      // 为空就返回
+      // 方法上没有@Pointcut、@Around、@Before、@After、@AfterReturning、@AfterThrowing注解就返回为空
       return null;
    }
-
+   // 封装为InstantiationModelAwarePointcutAdvisorImpl对象
    return new InstantiationModelAwarePointcutAdvisorImpl(expressionPointcut, candidateAdviceMethod,
          this, aspectInstanceFactory, declarationOrderInAspect, aspectName);
 }
@@ -399,16 +400,17 @@ ReflectiveAspectJAdvisorFactory#getPointcut
 ```java
 @Nullable
 private AspectJExpressionPointcut getPointcut(Method candidateAdviceMethod, Class<?> candidateAspectClass) {
-   // 获取带有@Pointcut, @Around, @Before, @After, @AfterReturning, @AfterThrowing的方法，
+   // 获取@Pointcut, @Around, @Before, @After, @AfterReturning, @AfterThrowing注解，
    AspectJAnnotation<?> aspectJAnnotation =
          AbstractAspectJAdvisorFactory.findAspectJAnnotationOnMethod(candidateAdviceMethod);
+   // 没有相关注解就返回为空
    if (aspectJAnnotation == null) {
       return null;
    }
 	 // 创建一个AspectJExpressionPointcut对象
    AspectJExpressionPointcut ajexp =
          new AspectJExpressionPointcut(candidateAspectClass, new String[0], new Class<?>[0]);
-   // set表示式示例
+   // 获取注解上的表示式
    ajexp.setExpression(aspectJAnnotation.getPointcutExpression());
    if (this.beanFactory != null) {
       ajexp.setBeanFactory(this.beanFactory);

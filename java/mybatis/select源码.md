@@ -76,7 +76,6 @@ public T newInstance(SqlSession sqlSession) {
 ```
 
 > 也就是说，我们获取接口实现的时候，实际上获取的是一个MapperProxy代理对象
->
 
 MapperProxy#invoke
 
@@ -416,7 +415,7 @@ public <E> List<E> doQuery(MappedStatement ms, Object parameter, RowBounds rowBo
     Configuration configuration = ms.getConfiguration();
     // Statement处理器
     StatementHandler handler = configuration.newStatementHandler(wrapper, ms, parameter, rowBounds, resultHandler, boundSql);
-    // 预处理（获取数据库连接、sql预处理、设置参数），上篇已经介绍过，这里不展示解释
+    // 预处理（获取数据库连接、sql预处理、设置参数），前面已经介绍过，这里不展示解释
     stmt = prepareStatement(handler, ms.getStatementLog());
     // 执行查询并返回结果集
     return handler.query(stmt, resultHandler);
@@ -459,7 +458,7 @@ public <E> List<E> query(Statement statement, ResultHandler resultHandler) throw
 
 这里我们给出mybatis缓存时序图
 
-![mybatis缓存](/Users/zhusidao/Documents/wiki/zhusidao.github.io.wiki/images/mybatis缓存.jpg)
+![mybatis缓存](select源码.assets/mybatis缓存.jpg)
 
 
 
@@ -519,7 +518,7 @@ public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds r
     throws SQLException {
   Cache cache = ms.getCache();
   if (cache != null) {
-    // 如有有需要就清楚二级缓存
+    // 如有有需要就清除二级缓存
     flushCacheIfRequired(ms);
     if (ms.isUseCache() && resultHandler == null) {
       // 使用了二级缓存 && 不存在结果处理器
@@ -541,7 +540,7 @@ public <E> List<E> query(MappedStatement ms, Object parameterObject, RowBounds r
 
 > cache打断点后的结构图
 >
-> ![二级缓存结构图](/Users/zhusidao/Documents/wiki/zhusidao.github.io.wiki/images/二级缓存结构图.jpg)
+> ![二级缓存结构图](select源码.assets/二级缓存结构图.jpg)
 >
 > 本质上是装饰器模式的使用，具体的装饰链是：
 >

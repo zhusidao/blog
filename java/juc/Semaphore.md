@@ -218,17 +218,13 @@ private void doAcquireSharedInterruptibly(int arg)
 }
 ```
 
-该方法的执行流程如图所示：
-
-![img](file:////Users/zhusidao/Library/Group%20Containers/UBF8T346G9.Office/TemporaryItems/msohtmlclip/clip_image001.png)
-
 以上就是所以的许可获取调用了，相关没有给解释的方法调用，可以去参考[ReentrantReadWriteLock](http://pms.ipo.com/pages/viewpage.action?pageId=141580618)。
 
  
 
 #### 下面是许可**释放**
 
-```
+```java
 public void release() {
     sync.releaseShared(1);
 } 
@@ -236,7 +232,7 @@ public void release() {
 
 **releaseShared**
 
-```
+```java
 /**
  * 释放成功执行doReleaseShared()
  */
@@ -251,7 +247,7 @@ public final boolean releaseShared(int arg) {
 
 **tryReleaseShared**
 
-```
+```java
 protected final boolean tryReleaseShared(int releases) {
     for (;;) {
                // 获取当前许可数

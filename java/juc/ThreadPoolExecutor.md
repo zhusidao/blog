@@ -578,6 +578,7 @@ final void tryTerminate() {
                 } finally {
                     // 设置状态为TERMINATED
                     ctl.set(ctlOf(TERMINATED, 0));
+                    // 唤醒条件队列中的
                     termination.signalAll();
                 }
                 return;

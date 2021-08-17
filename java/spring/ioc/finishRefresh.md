@@ -568,3 +568,4 @@ private void doInvokeListener(ApplicationListener listener, ApplicationEvent eve
 到这里finishRefresh方法已经介绍完毕了，看完ioc实属不易，需要很耐心。
 
 基本都这里，整个ioc核心代码基本都已经分析完毕，总体流程就是：bean注册->bean实例化->bean属性赋值->bean初始化
+

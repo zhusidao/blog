@@ -4,7 +4,7 @@
 
 mybatis-config.xml
 
-```java
+```xml
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE configuration
         PUBLIC "-//mybatis.org//DTD Config 3.0//EN"
@@ -29,7 +29,7 @@ mybatis-config.xml
 
 BookMapper.xml
 
-```java
+```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
@@ -203,6 +203,7 @@ private SqlSession openSessionFromDataSource(ExecutorType execType, TransactionI
     final TransactionFactory transactionFactory = getTransactionFactoryFromEnvironment(environment);
     // 创建事务
     tx = transactionFactory.newTransaction(environment.getDataSource(), level, autoCommit);
+    // 执行器
     final Executor executor = configuration.newExecutor(tx, execType);
     return new DefaultSqlSession(configuration, executor, autoCommit);
   } catch (Exception e) {
@@ -380,7 +381,7 @@ public void clearLocalCache() {
 >
 > 回顾一下一级缓存失效的场景：
 >
-> 1. 必须是相同的会话
+> 1. 必须是相同的会话SqlSession
 > 2. 必须是同一个mapper 接口中的同一个方法
 > 3. 中间没有执行session.clearCache() 方法
 > 4. 查询语句中间没有执行insert、update、delete方法
