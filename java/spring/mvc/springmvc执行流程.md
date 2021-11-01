@@ -1,10 +1,8 @@
----
-typora-root-url: ../../../images
----
+# spring mvc执行流程
 
 先来看看DispatcherServlet类图
 
-![DispatcherServlet结构图](/Users/zhusidao/Documents/wiki/zhusidao.github.io.wiki/images/DispatcherServlet结构图.png)
+![DispatcherServlet结构图](./springmvc执行流程.assets/DispatcherServlet结构图.png)
 
 > DispatcherServlet继承于HttpServlet
 >
@@ -242,33 +240,7 @@ protected void doDispatch(HttpServletRequest request, HttpServletResponse respon
 
 这里我们以StandardServletMultipartResolver这种方式为例（必须使用支持Servlet3.0的容器才可以），CommonsMultipartResolver这种方法这里不做讲解。
 
-```java
-public class MyWebApplicationInitializer implements WebApplicationInitializer {
-
-    @Override
-    public void onStartup(ServletContext container) {
-        //初始化spring容器  以注解的方式
-        AnnotationConfigWebApplicationContext ac = new AnnotationConfigWebApplicationContext();
-        //将配置类注册进spring容器
-        ac.register(MyWebAppInitializer.class);
-        DispatcherServlet app = new DispatcherServlet(ac);
-        String location = System.getProperty("user.dir") + "/file";
-        //2M
-        long maxFileSize = 2097152;
-        //4M
-        long maxRequestSize = 4194304;
-        int fileSizeThreshold = 0;
-        MultipartConfigElement multipartConfigElement = new MultipartConfigElement(location, maxFileSize, maxRequestSize, fileSizeThreshold);
-        ServletRegistration.Dynamic registration = container.addServlet("app", app);
-        //配置对multipart的支持
-        registration.setMultipartConfig(multipartConfigElement);
-        registration.setLoadOnStartup(1);
-        registration.addMapping("/");
-    }
-}
-```
-
-创建一个StandardServletMultipartResolver做为bean
+需以StandardServletMultipartResolver方式实现文件上传，创建一个StandardServletMultipartResolver做为bean
 
 ```java
 @Bean
@@ -279,7 +251,7 @@ public MultipartResolver multipartResolver(){
 
 
 
-**文件上传解析源码分析**
+### **文件上传解析源码分析**
 
 接着上文的doDispatch进行分析，调用checkMultipart进行文件上传解析。
 
@@ -377,9 +349,20 @@ private void parseRequest(HttpServletRequest request) {
 }
 ```
 
+AbstractMultipartHttpServletRequest#setMultipartFiles
+
+```java
+protected final void setMultipartFiles(MultiValueMap<String, MultipartFile> multipartFiles) {
+   this.multipartFiles =
+         new LinkedMultiValueMap<>(Collections.unmodifiableMap(multipartFiles));
+}
+```
+
+> 最终解析出来的文件会放置在StandardMultipartHttpServletRequest的父类multipartFiles变量中
 
 
-#### 获取执行器
+
+### 获取执行器
 
 DispatcherServlet#getHandler
 
@@ -389,6 +372,7 @@ protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Ex
    if (this.handlerMappings != null) {
       // handlerMappings含有三个HandlerMapping
       // BeanNameUrlHandlerMapping、RequestMappingHandlerMapping、RouterFunctionMapping(web_flux这里不做讲解)
+      // 首先执行的是RequestMappingHandlerMapping
       for (HandlerMapping mapping : this.handlerMappings) {
          HandlerExecutionChain handler = mapping.getHandler(request);
          if (handler != null) {
@@ -409,12 +393,10 @@ protected HandlerExecutionChain getHandler(HttpServletRequest request) throws Ex
 > ​        SimpleUrlHandlerMapping (org.springframework.web.servlet.handler)
 > ​      AbstractHandlerMethodMapping (org.springframework.web.servlet.handler)
 > ​        RequestMappingInfoHandlerMapping (org.springframework.web.servlet.mvc.method)
-> ​          **RequestMappingHandlerMapping (org.springframework.web.servlet.mvc.method.annotation)** --重点
+> ​          **RequestMappingHandlerMapping (org.springframework.web.servlet.mvc.method.annotation)** --重点关注这个
 > ​      **RouterFunctionMapping (org.springframework.web.servlet.function.support)**
->
-> BeanNameUrlHandlerMapping处理Con
 
-
+RequestMappingHandlerMapping的父类是AbstractHandlerMapping，调用的是其父类的方法
 
 AbstractHandlerMapping#getHandler
 
@@ -461,7 +443,395 @@ public final HandlerExecutionChain getHandler(HttpServletRequest request) throws
 }
 ```
 
-> 所有注释中的@Controller其实帮助理解， 实际上是被spring定义为bean，即为习惯行注解，而不是语义性注解。
+> 所有注释中的@Controller其实帮助理解， 实际上是被spring定义为bean，即为习惯性注解，而不是语义性注解。
+
+AbstractHandlerMapping#getHandlerInternal
+
+```java
+@Override
+protected HandlerMethod getHandlerInternal(HttpServletRequest request) throws Exception {
+   request.removeAttribute(PRODUCIBLE_MEDIA_TYPES_ATTRIBUTE);
+   try {
+      // 获取HandlerMethod
+      return super.getHandlerInternal(request);
+   }
+   finally {
+      ProducesRequestCondition.clearMediaTypesAttribute(request);
+   }
+}
+```
+
+调用父类AbstractHandlerMethodMapping#getHandlerInternal
+
+```java
+@Override
+protected HandlerMethod getHandlerInternal(HttpServletRequest request) throws Exception {
+   // 获取请求路径
+   String lookupPath = getUrlPathHelper().getLookupPathForRequest(request);
+   request.setAttribute(LOOKUP_PATH, lookupPath);
+   // 加读锁
+   this.mappingRegistry.acquireReadLock();
+   try {
+      // 获取方法处理器
+      HandlerMethod handlerMethod = lookupHandlerMethod(lookupPath, request);
+      return (handlerMethod != null ? handlerMethod.createWithResolvedBean() : null);
+   }
+   finally {
+      // 读锁释放
+      this.mappingRegistry.releaseReadLock();
+   }
+}
+```
+
+
+
+#### 获取处理后的请求路径
+
+UrlPathHelper#getLookupPathForRequest
+
+```java
+public String getLookupPathForRequest(HttpServletRequest request) {
+   // Always use full path within current servlet context?
+   // 是否总是用全路径去匹配
+   // 默认值为false
+   if (this.alwaysUseFullPath) {
+      return getPathWithinApplication(request);
+   }
+   // Else, use path within current servlet mapping if applicable
+   String rest = getPathWithinServletMapping(request);
+   if (!"".equals(rest)) {
+      return rest;
+   }
+   else {
+      return getPathWithinApplication(request);
+   }
+}
+```
+
+> alwaysUseFullPath = false的时候， 会移除servletPath的部分进行匹配
+
+UrlPathHelper#getPathWithinApplication
+
+```java
+public String getPathWithinApplication(HttpServletRequest request) {
+    // 获取contextPath
+		String contextPath = getContextPath(request);
+    // 获取requestUri
+		String requestUri = getRequestUri(request);
+    // 获取requestUri中不包含contextPath的部分
+    // contextPath -> /test  requestUri -> /test/abc
+    // getRemainingPath(requestUri, contextPath, true); -> /abc
+		String path = getRemainingPath(requestUri, contextPath, true);
+		if (path != null) {
+			// Normal case: URI contains context path.
+			return (StringUtils.hasText(path) ? path : "/");
+		}
+		else {
+			return requestUri;
+		}
+}
+```
+
+UrlPathHelper#getContextPath
+
+```java
+public String getContextPath(HttpServletRequest request) {
+   // 获取contextPath
+   String contextPath = (String) request.getAttribute(WebUtils.INCLUDE_CONTEXT_PATH_ATTRIBUTE);
+   if (contextPath == null) {
+      contextPath = request.getContextPath();
+   }
+   // contextPath为'/'
+   if ("/".equals(contextPath)) {
+      // Invalid case, but happens for includes on Jetty: silently adapt it.
+      // 无效的情况，但发生在Jetty上的包含项：默默地适应它。
+      contextPath = "";
+   }
+   return decodeRequestString(request, contextPath);
+}
+```
+
+UrlPathHelper#decodeRequestString
+
+```java
+public String decodeRequestString(HttpServletRequest request, String source) {
+   // 默认值为true
+   if (this.urlDecode) {
+      // 进行编码
+      return decodeInternal(request, source);
+   }
+   return source;
+}
+```
+
+UrlPathHelper#decodeInternal
+
+```java
+private String decodeInternal(HttpServletRequest request, String source) {
+   String enc = determineEncoding(request);
+   try {
+      // 进行编码
+      return UriUtils.decode(source, enc);
+   }
+   catch (UnsupportedCharsetException ex) {
+      if (logger.isWarnEnabled()) {
+         logger.warn("Could not decode request string [" + source + "] with encoding '" + enc +
+               "': falling back to platform default encoding; exception message: " + ex.getMessage());
+      }
+      return URLDecoder.decode(source);
+   }
+}
+```
+
+UrlPathHelper#determineEncoding
+
+```java
+protected String determineEncoding(HttpServletRequest request) {
+   // 从request中获取字符编码
+   String enc = request.getCharacterEncoding();
+   if (enc == null) {
+      // 获取默认的编码"ISO-8859-1"
+      enc = getDefaultEncoding();
+   }
+   return enc;
+}
+```
+
+UrlPathHelper#getRequestUri
+
+```java
+public String getRequestUri(HttpServletRequest request) {
+   // 获取uri
+   String uri = (String) request.getAttribute(WebUtils.INCLUDE_REQUEST_URI_ATTRIBUTE);
+   if (uri == null) {
+      uri = request.getRequestURI();
+   }
+   // 编码并清理uri字符串
+   return decodeAndCleanUriString(request, uri);
+}
+```
+
+UrlPathHelper#decodeAndCleanUriString
+
+```java
+private String decodeAndCleanUriString(HttpServletRequest request, String uri) {
+   // 对提供的URI字符串进行解码，并在";"后面去掉任何无关部
+   uri = removeSemicolonContent(uri);
+   // 进行编码
+   uri = decodeRequestString(request, uri);
+   // 替换所有"//"为"/"
+   uri = getSanitizedPath(uri);
+   return uri;
+}
+```
+
+UrlPathHelper#decodeAndCleanUriString
+
+```java
+public String removeSemicolonContent(String requestUri) {
+   // removeSemicolonContent默认为true移除所有';'后面的字符串 否则 移除";jsessionid="
+   return (this.removeSemicolonContent ?
+         removeSemicolonContentInternal(requestUri) : removeJsessionid(requestUri));
+}
+```
+
+UrlPathHelper#removeSemicolonContentInternal
+
+```java
+/**
+ * 移除所有';'后面的字符串
+ * /ab;c;d -> /ab
+ */
+private String removeSemicolonContentInternal(String requestUri) {
+   int semicolonIndex = requestUri.indexOf(';');
+   while (semicolonIndex != -1) {
+      int slashIndex = requestUri.indexOf('/', semicolonIndex);
+      String start = requestUri.substring(0, semicolonIndex);
+      requestUri = (slashIndex != -1) ? start + requestUri.substring(slashIndex) : start;
+      semicolonIndex = requestUri.indexOf(';', semicolonIndex);
+   }
+   return requestUri;
+}
+```
+
+UrlPathHelper#getRemainingPath
+
+```java
+/**
+ * requestUri -> /test
+ * mapping -> /test/abc
+ * getRemainingPath(requestUri, contextPath, true); -> /abc
+ */
+@Nullable
+private String getRemainingPath(String requestUri, String mapping, boolean ignoreCase) {
+   int index1 = 0;
+   int index2 = 0;
+   for (; (index1 < requestUri.length()) && (index2 < mapping.length()); index1++, index2++) {
+      char c1 = requestUri.charAt(index1);
+      char c2 = mapping.charAt(index2);
+      if (c1 == ';') {
+         index1 = requestUri.indexOf('/', index1);
+         if (index1 == -1) {
+            return null;
+         }
+         c1 = requestUri.charAt(index1);
+      }
+      if (c1 == c2 || (ignoreCase && (Character.toLowerCase(c1) == Character.toLowerCase(c2)))) {
+         continue;
+      }
+      return null;
+   }
+   if (index2 != mapping.length()) {
+      return null;
+   }
+   else if (index1 == requestUri.length()) {
+      return "";
+   }
+   else if (requestUri.charAt(index1) == ';') {
+      index1 = requestUri.indexOf('/', index1);
+   }
+   return (index1 != -1 ? requestUri.substring(index1) : "");
+}
+```
+
+UrlPathHelper#getPathWithinServletMapping
+
+```java
+/**
+ * 获取路径
+ * <p>E.g.: servlet mapping = "/*"; request URI = "/test/a" -> "/test/a".
+ * <p>E.g.: servlet mapping = "/"; request URI = "/test/a" -> "/test/a".
+ * <p>E.g.: servlet mapping = "/test/*"; request URI = "/test/a" -> "/a".
+ * <p>E.g.: servlet mapping = "/test"; request URI = "/test" -> "".
+ * <p>E.g.: servlet mapping = "/*.test"; request URI = "/a.test" -> "".
+ */
+public String getPathWithinServletMapping(HttpServletRequest request) {
+   // 获取uri中不包含contextPath的部分
+   String pathWithinApp = getPathWithinApplication(request);
+   // 获取servletPath
+   String servletPath = getServletPath(request);
+   // replace all "//" by "/"
+   String sanitizedPathWithinApp = getSanitizedPath(pathWithinApp);
+   String path;
+	
+   // If the app container sanitized the servletPath, check against the sanitized version
+   /*
+    * 若contextPath为"/test"
+    * servletMappings为"/asd/*"
+    * 请求为"http://localhost:8080/test/asd/abc"
+    * 此时servletPath为"/asd"
+    * 下面会进行截取
+    */
+   if (servletPath.contains(sanitizedPathWithinApp)) {
+      path = getRemainingPath(sanitizedPathWithinApp, servletPath, false);
+   }
+   else {
+      // 获得"/abc"
+      path = getRemainingPath(pathWithinApp, servletPath, false);
+   }
+
+   if (path != null) {
+      // Normal case: URI contains servlet path.
+      return path;
+   }
+   else {
+      // Special case: URI is different from servlet path.
+      String pathInfo = request.getPathInfo();
+      if (pathInfo != null) {
+         // Use path info if available. Indicates index page within a servlet mapping?
+         // e.g. with index page: URI="/", servletPath="/index.html"
+         return pathInfo;
+      }
+      if (!this.urlDecode) {
+         // No path info... (not mapped by prefix, nor by extension, nor "/*")
+         // For the default servlet mapping (i.e. "/"), urlDecode=false can
+         // cause issues since getServletPath() returns a decoded path.
+         // If decoding pathWithinApp yields a match just use pathWithinApp.
+         path = getRemainingPath(decodeInternal(request, pathWithinApp), servletPath, false);
+         if (path != null) {
+            return pathWithinApp;
+         }
+      }
+      // Otherwise, use the full servlet path.
+      return servletPath;
+   }
+}
+```
+
+UrlPathHelper#getSanitizedPath
+
+```java
+/**
+ * replace all "//" by "/"
+ */
+private String getSanitizedPath(final String path) {
+   String sanitized = path;
+   while (true) {
+      int index = sanitized.indexOf("//");
+      if (index < 0) {
+         break;
+      }
+      else {
+         sanitized = sanitized.substring(0, index) + sanitized.substring(index + 1);
+      }
+   }
+   return sanitized;
+}
+```
+
+
+
+RequestMappingHandlerMapping处理完请求路径后，接下来继续关注如何**获取HandlerMethod**。
+
+AbstractHandlerMethodMapping#lookupHandlerMethod
+
+```java
+@Nullable
+protected HandlerMethod lookupHandlerMethod(String lookupPath, HttpServletRequest request) throws Exception {
+   List<Match> matches = new ArrayList<>();
+   // 获取直接匹配的路径，这里是直接根据请求连接进行匹配
+   List<T> directPathMatches = this.mappingRegistry.getMappingsByUrl(lookupPath);
+   if (directPathMatches != null) {
+      // 获取匹配路由添加到matches变量中
+      addMatchingMappings(directPathMatches, matches, request);
+   }
+   if (matches.isEmpty()) {
+      // No choice but to go through all mappings...
+      addMatchingMappings(this.mappingRegistry.getMappings().keySet(), matches, request);
+   }
+
+   if (!matches.isEmpty()) {
+      Match bestMatch = matches.get(0);
+      if (matches.size() > 1) {
+         Comparator<Match> comparator = new MatchComparator(getMappingComparator(request));
+         matches.sort(comparator);
+         bestMatch = matches.get(0);
+         if (logger.isTraceEnabled()) {
+            logger.trace(matches.size() + " matching mappings: " + matches);
+         }
+         if (CorsUtils.isPreFlightRequest(request)) {
+            return PREFLIGHT_AMBIGUOUS_MATCH;
+         }
+         Match secondBestMatch = matches.get(1);
+         if (comparator.compare(bestMatch, secondBestMatch) == 0) {
+            Method m1 = bestMatch.handlerMethod.getMethod();
+            Method m2 = secondBestMatch.handlerMethod.getMethod();
+            String uri = request.getRequestURI();
+            throw new IllegalStateException(
+                  "Ambiguous handler methods mapped for '" + uri + "': {" + m1 + ", " + m2 + "}");
+         }
+      }
+      request.setAttribute(BEST_MATCHING_HANDLER_ATTRIBUTE, bestMatch.handlerMethod);
+      handleMatch(bestMatch.mapping, lookupPath, request);
+      return bestMatch.handlerMethod;
+   }
+   else {
+      return handleNoMatch(this.mappingRegistry.getMappings().keySet(), lookupPath, request);
+   }
+}
+```
+
+
 
 AbstractHandlerMapping#getHandlerExecutionChain
 
@@ -814,319 +1184,11 @@ protected void rejectRequest(ServerHttpResponse response) throws IOException {
 >
 > PreFlight请求默认会把前端自定义请求头带入到Access-Control-Request-Headers属性中
 >
-> ![跨越header截图](/跨越header截图.png)
+> ![跨越header截图](springmvc执行流程.assets/跨越header截图.png)
 
 
 
 **BeanNameUrlHandlerMapping**获取执行方法的逻辑
-
-AbstractUrlHandlerMapping#getHandlerInternal
-
-```java
-@Override
-@Nullable
-protected Object getHandlerInternal(HttpServletRequest request) throws Exception {
-   // 获取处理后的请求路径--去除了ServletPath和ContextPath
-   String lookupPath = getUrlPathHelper().getLookupPathForRequest(request);
-   request.setAttribute(LOOKUP_PATH, lookupPath);
-   // 获取处理器
-   Object handler = lookupHandler(lookupPath, request);
-   if (handler == null) {
-      // We need to care for the default handler directly, since we need to
-      // expose the PATH_WITHIN_HANDLER_MAPPING_ATTRIBUTE for it as well.
-      // 这里进行一次'/'的默认处理器构建
-      Object rawHandler = null;
-      if ("/".equals(lookupPath)) {
-         rawHandler = getRootHandler();
-      }
-      if (rawHandler == null) {
-         rawHandler = getDefaultHandler();
-      }
-      if (rawHandler != null) {
-         // Bean name or resolved handler?
-         if (rawHandler instanceof String) {
-            String handlerName = (String) rawHandler;
-            rawHandler = obtainApplicationContext().getBean(handlerName);
-         }
-         // 校验留给子类实现
-         validateHandler(rawHandler, request);
-         // 
-         handler = buildPathExposingHandler(rawHandler, lookupPath, lookupPath, null);
-      }
-   }
-   return handler;
-}
-```
-
-> BeanNameUrlHandlerMapping调用父类的AbstractUrlHandlerMapping#getHandlerInternal
-
-
-
-#### 获取处理后的请求路径
-
-UrlPathHelper#getLookupPathForRequest
-
-```java
-public String getLookupPathForRequest(HttpServletRequest request) {
-   // Always use full path within current servlet context?
-   // 是否总是用全路径去匹配
-   // 默认值为false
-   if (this.alwaysUseFullPath) {
-      return getPathWithinApplication(request);
-   }
-   // Else, use path within current servlet mapping if applicable
-   String rest = getPathWithinServletMapping(request);
-   if (!"".equals(rest)) {
-      return rest;
-   }
-   else {
-      return getPathWithinApplication(request);
-   }
-}
-```
-
-> alwaysUseFullPath = false的时候， 会移除servletPath的部分进行匹配
-
-UrlPathHelper#getPathWithinServletMapping
-
-```java
-public String getPathWithinServletMapping(HttpServletRequest request) {
-   // 获取uri中不包含contextPath的部分
-   String pathWithinApp = getPathWithinApplication(request);
-   // 获取servletPath
-   String servletPath = getServletPath(request);
-   // replace all "//" by "/"
-   String sanitizedPathWithinApp = getSanitizedPath(pathWithinApp);
-   String path;
-	
-   // If the app container sanitized the servletPath, check against the sanitized version
-   /*
-    * 若contextPath为"/test"
-    * servletMappings为"/asd/*"
-    * 请求为"http://localhost:8080/test/asd/abc"
-    * 此时servletPath为"/asd"
-    * 下面会进行截取
-    */
-   if (servletPath.contains(sanitizedPathWithinApp)) {
-      path = getRemainingPath(sanitizedPathWithinApp, servletPath, false);
-   }
-   else {
-      // 获得"/abc"
-      path = getRemainingPath(pathWithinApp, servletPath, false);
-   }
-
-   if (path != null) {
-      // Normal case: URI contains servlet path.
-      return path;
-   }
-   else {
-      // Special case: URI is different from servlet path.
-      String pathInfo = request.getPathInfo();
-      if (pathInfo != null) {
-         // Use path info if available. Indicates index page within a servlet mapping?
-         // e.g. with index page: URI="/", servletPath="/index.html"
-         return pathInfo;
-      }
-      if (!this.urlDecode) {
-         // No path info... (not mapped by prefix, nor by extension, nor "/*")
-         // For the default servlet mapping (i.e. "/"), urlDecode=false can
-         // cause issues since getServletPath() returns a decoded path.
-         // If decoding pathWithinApp yields a match just use pathWithinApp.
-         path = getRemainingPath(decodeInternal(request, pathWithinApp), servletPath, false);
-         if (path != null) {
-            return pathWithinApp;
-         }
-      }
-      // Otherwise, use the full servlet path.
-      return servletPath;
-   }
-}
-```
-
-UrlPathHelper#getPathWithinApplication
-
-```java
-public String getPathWithinApplication(HttpServletRequest request) {
-    // 获取contextPath
-		String contextPath = getContextPath(request);
-    // 获取requestUri
-		String requestUri = getRequestUri(request);
-    // 获取requestUri中不包含contextPath的部分
-    // contextPath -> /test  requestUri -> /test/abc
-    // getRemainingPath(requestUri, contextPath, true); -> /abc
-		String path = getRemainingPath(requestUri, contextPath, true);
-		if (path != null) {
-			// Normal case: URI contains context path.
-			return (StringUtils.hasText(path) ? path : "/");
-		}
-		else {
-			return requestUri;
-		}
-}
-```
-
-UrlPathHelper#getContextPath
-
-```java
-public String getContextPath(HttpServletRequest request) {
-   // 获取contextPath
-   String contextPath = (String) request.getAttribute(WebUtils.INCLUDE_CONTEXT_PATH_ATTRIBUTE);
-   if (contextPath == null) {
-      contextPath = request.getContextPath();
-   }
-   // contextPath为'/'
-   if ("/".equals(contextPath)) {
-      // Invalid case, but happens for includes on Jetty: silently adapt it.
-      // 无效的情况，但发生在Jetty上的包含项：默默地适应它。
-      contextPath = "";
-   }
-   return decodeRequestString(request, contextPath);
-}
-```
-
-UrlPathHelper#decodeRequestString
-
-```java
-public String decodeRequestString(HttpServletRequest request, String source) {
-   // 默认值为true
-   if (this.urlDecode) {
-      // 进行编码
-      return decodeInternal(request, source);
-   }
-   return source;
-}
-```
-
-UrlPathHelper#decodeInternal
-
-```java
-private String decodeInternal(HttpServletRequest request, String source) {
-   String enc = determineEncoding(request);
-   try {
-      // 进行编码
-      return UriUtils.decode(source, enc);
-   }
-   catch (UnsupportedCharsetException ex) {
-      if (logger.isWarnEnabled()) {
-         logger.warn("Could not decode request string [" + source + "] with encoding '" + enc +
-               "': falling back to platform default encoding; exception message: " + ex.getMessage());
-      }
-      return URLDecoder.decode(source);
-   }
-}
-```
-
-UrlPathHelper#determineEncoding
-
-```java
-protected String determineEncoding(HttpServletRequest request) {
-   // 从request中获取字符编码
-   String enc = request.getCharacterEncoding();
-   if (enc == null) {
-      // 获取默认的编码"ISO-8859-1"
-      enc = getDefaultEncoding();
-   }
-   return enc;
-}
-```
-
-UrlPathHelper#getRequestUri
-
-```java
-public String getRequestUri(HttpServletRequest request) {
-   // 获取uri
-   String uri = (String) request.getAttribute(WebUtils.INCLUDE_REQUEST_URI_ATTRIBUTE);
-   if (uri == null) {
-      uri = request.getRequestURI();
-   }
-   // 编码并清理uri字符串
-   return decodeAndCleanUriString(request, uri);
-}
-```
-
-UrlPathHelper#decodeAndCleanUriString
-
-```java
-private String decodeAndCleanUriString(HttpServletRequest request, String uri) {
-   // 移除
-   uri = removeSemicolonContent(uri);
-   // 进行编码
-   uri = decodeRequestString(request, uri);
-   // 替换所有"//"为"/"
-   uri = getSanitizedPath(uri);
-   return uri;
-}
-```
-
-UrlPathHelper#decodeAndCleanUriString
-
-```java
-public String removeSemicolonContent(String requestUri) {
-   // removeSemicolonContent默认为true
-   // 移除所有';'后面的字符串 否则 移除";jsessionid="
-   return (this.removeSemicolonContent ?
-         removeSemicolonContentInternal(requestUri) : removeJsessionid(requestUri));
-}
-```
-
-UrlPathHelper#removeSemicolonContentInternal
-
-```java
-/**
- * 移除所有';'后面的字符串
- * /ab;c;d -> /ab
- */
-private String removeSemicolonContentInternal(String requestUri) {
-   int semicolonIndex = requestUri.indexOf(';');
-   while (semicolonIndex != -1) {
-      int slashIndex = requestUri.indexOf('/', semicolonIndex);
-      String start = requestUri.substring(0, semicolonIndex);
-      requestUri = (slashIndex != -1) ? start + requestUri.substring(slashIndex) : start;
-      semicolonIndex = requestUri.indexOf(';', semicolonIndex);
-   }
-   return requestUri;
-}
-```
-
-UrlPathHelper#getRemainingPath
-
-```java
-/**
- * contextPath -> /test
- * requestUri -> /test/abc
- * getRemainingPath(requestUri, contextPath, true); -> /abc
- */
-@Nullable
-private String getRemainingPath(String requestUri, String mapping, boolean ignoreCase) {
-   int index1 = 0;
-   int index2 = 0;
-   for (; (index1 < requestUri.length()) && (index2 < mapping.length()); index1++, index2++) {
-      char c1 = requestUri.charAt(index1);
-      char c2 = mapping.charAt(index2);
-      if (c1 == ';') {
-         index1 = requestUri.indexOf('/', index1);
-         if (index1 == -1) {
-            return null;
-         }
-         c1 = requestUri.charAt(index1);
-      }
-      if (c1 == c2 || (ignoreCase && (Character.toLowerCase(c1) == Character.toLowerCase(c2)))) {
-         continue;
-      }
-      return null;
-   }
-   if (index2 != mapping.length()) {
-      return null;
-   }
-   else if (index1 == requestUri.length()) {
-      return "";
-   }
-   else if (requestUri.charAt(index1) == ';') {
-      index1 = requestUri.indexOf('/', index1);
-   }
-   return (index1 != -1 ? requestUri.substring(index1) : "");
-}
-```
 
 AbstractUrlHandlerMapping#lookupHandler
 

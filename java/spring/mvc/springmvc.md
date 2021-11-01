@@ -275,7 +275,9 @@ DispatcherServlet#initStrategies
 
 ```java
 protected void initStrategies(ApplicationContext context) {
+   // 文件上传解析器
    initMultipartResolver(context);
+   // 国际化解析器
    initLocaleResolver(context);
    initThemeResolver(context);
    initHandlerMappings(context);
