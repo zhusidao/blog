@@ -29,7 +29,7 @@ class CachedData {
                     data = ...
                     cacheValid = true;
                 }
-                               //锁降级，在释放写锁前获取读锁
+                //锁降级，在释放写锁前获取读锁
                 rwl.readLock().lock();
             } finally {
                 rwl.writeLock().unlock(); // Unlock write, still hold read

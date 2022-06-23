@@ -150,7 +150,7 @@ public static Set<BeanDefinitionHolder> registerAnnotationConfigProcessors(
 
 > 1. 对beanFactory的属性进行设置
 > 2. 注册Spring内部的处理器类(实现BeanDefinitionRegistryPostProcessor接口和BeanFactoryPostProcessor接口), Spring在内部类维护这些类, 为BeanFactory提供特定的功能
-> 以下6个类是最先注册到beanFactory中的BeanDefinitionMap集合中去
+>    以下6个类是最先注册到beanFactory中的BeanDefinitionMap集合中去
 >        **(1). org.springframework.context.annotation.internalConfigurationAnnotationProcessor(重点)** 
 >        (2). org.springframework.context.annotation.internalAutowiredAnnotationProcessor
 >        (3). org.springframework.context.annotation.internalCommonAnnotationProcessor
@@ -359,7 +359,7 @@ private <T> void doRegisterBean(Class<T> beanClass, @Nullable String name,
 }
 ```
 
-> 定义bean的一些属性并对bean进行注册
+> 解析bean的一些属性并对bean进行注册
 
 接下来看如何获取bean的作用域AnnotationScopeMetadataResolver#resolveScopeMetadata
 
@@ -703,7 +703,7 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
    beanFactory.addPropertyEditorRegistrar(new ResourceEditorRegistrar(this, getEnvironment()));
 
    // Configure the bean factory with context callbacks.
-   // 给beanFactory添加后置处理器
+   // 给beanFactory添加aware相关的后置处理器
    beanFactory.addBeanPostProcessor(new ApplicationContextAwareProcessor(this));
    // 忽略的几个接口
    beanFactory.ignoreDependencyInterface(EnvironmentAware.class);
@@ -1031,7 +1031,7 @@ private static void invokeBeanFactoryPostProcessors(
 >
 >  官方文档对于这个接口的说明如下：
 >
-> - 扩展了标准BeanFactoryPostProcessor SPI，允许在常规BeanFactoryPostProcessor postProcessBeanFactory方法执行之前向容器中注册更多的bean定义。特别是，BeanDefinitionRegistryPostProcessor可以注册更多的bean定义，这些定义反过来又定义了BeanFactoryPostProcessor实例。
+> - 扩展了标准BeanFactoryPostProcessor SPI，允许在常规BeanFactoryPostProcessor#postProcessBeanFactory方法执行之前向容器中注册更多的bean定义。特别是，BeanDefinitionRegistryPostProcessor可以注册更多的bean定义，这些定义反过来又定义了BeanFactoryPostProcessor实例。
 >
 >  BeanDefinitionRegistryPostProcessor作为BeanFactoryPostProcessor的子接口，其postProcessBeanDefinitionRegistry方法会在所有BeanFactoryPostProcessor post-processing前执行。因此
 >
