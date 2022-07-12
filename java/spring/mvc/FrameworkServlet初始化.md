@@ -1,4 +1,78 @@
-# spring启动流程
+# FrameworkServlet初始化
+
+在进入FrameworkServlet初始化讲解之前，我们先来看来一段spring mvc的配置文件：
+
+```xml
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee
+                      http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
+         version="3.1"
+         metadata-complete="true">
+
+    <servlet>
+        <servlet-name>dispatch</servlet-name>
+        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+    <servlet-mapping>
+        <servlet-name>dispatch</servlet-name>
+        <url-pattern>/</url-pattern>
+    </servlet-mapping>
+</web-app>
+```
+
+指定DispatcherServlet这个servlet容器，来处理所有的请求，附上DispatcherServlet类结构图
+
+![DispatcherServlet结构图](springmvc启动流程.assets/DispatcherServlet结构图.png)
+
+简化以后的关系图如下：
+
+![在这里插入图片描述](https://img-blog.csdnimg.cn/20190329171506955.png?x-oss-process=image/watermark,type_ZmFuZ3poZW5naGVpdGk,shadow_10,text_aHR0cHM6Ly9ibG9nLmNzZG4ubmV0L2J1dHRlcmZseTEwMDk=,size_16,color_FFFFFF,t_70)
+
+1. web容器在实例化servlet时会调用Servlet的init(ServletConfig)方法，由于其子类GenericServlet实现了该方法，因而最终会调用GenericServlet.init(ServletConfig)方法。
+2. GenericServlet.init(ServletConfig)方法内部会调用其init()方法，由于该方法又是由其子类HttpServletBean实现,实际上是执行了HttpServletBean.init()方法。
+3. HttpServletBean.init()方法内部会调用其自定义的initServletBean()方法，但该方法实际上是由FrameworkServlet实现，实际上是执行了FrameworkServlet.initServletBean()方法。
+4. FrameworkServlet.initServletBean()方法内部真正初始化了applicationContext，并加载配置文件，最终调用其自定义的initFrameworkServlet()方法。
+
+
+
+下面我们直接开始对FrameworkServlet的初始化进行源码分析
+
+FrameworkServlet#initServletBean
+
+```java
+@Override
+protected final void initServletBean() throws ServletException {
+   getServletContext().log("Initializing Spring " + getClass().getSimpleName() + " '" + getServletName() + "'");
+   if (logger.isInfoEnabled()) {
+      logger.info("Initializing Servlet '" + getServletName() + "'");
+   }
+   long startTime = System.currentTimeMillis();
+
+   try {
+      // 初始化上下文
+      this.webApplicationContext = initWebApplicationContext();
+      initFrameworkServlet();
+   }
+   catch (ServletException | RuntimeException ex) {
+      logger.error("Context initialization failed", ex);
+      throw ex;
+   }
+
+   if (logger.isDebugEnabled()) {
+      String value = this.enableLoggingRequestDetails ?
+            "shown which may lead to unsafe logging of potentially sensitive data" :
+            "masked to prevent unsafe logging of potentially sensitive data";
+      logger.debug("enableLoggingRequestDetails='" + this.enableLoggingRequestDetails +
+            "': request parameters and headers will be " + value);
+   }
+
+   if (logger.isInfoEnabled()) {
+      logger.info("Completed initialization in " + (System.currentTimeMillis() - startTime) + " ms");
+   }
+}
+```
 
 FrameworkServlet#initWebApplicationContext
 

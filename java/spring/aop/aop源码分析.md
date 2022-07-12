@@ -1,7 +1,3 @@
----
-typora-root-url: ../../../images
----
-
 # AOP源码分析
 
 本篇只介绍基于@EnableAspectJAutoProxy注解的分析，
@@ -68,7 +64,7 @@ class AspectJAutoProxyRegistrar implements ImportBeanDefinitionRegistrar {
 
 AnnotationAwareAspectJAutoProxyCreator的类结构图如下
 
-![AnnotationAwareAspectJAutoProxyCreator](/AnnotationAwareAspectJAutoProxyCreator.png)
+![AnnotationAwareAspectJAutoProxyCreator](aop源码分析.assets/AnnotationAwareAspectJAutoProxyCreator-7549724.png)
 
 该类继承SmartInstantiationAwareBeanPostProcessor，重写了postProcessBeforeInstantiation和（实例化之前执行）postProcessAfterInitialization（初始化之后执行）方法。
 

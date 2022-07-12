@@ -1,38 +1,18 @@
-# spring mvc执行流程
+# SpringMVC执行流程
 
-先来看看DispatcherServlet类图
+上一篇我们已经介绍了SpringMVC的初始化流程，本篇开始介绍SpringMVC执行流程。
 
-![DispatcherServlet结构图](./springmvc执行流程.assets/DispatcherServlet结构图.png)
+开始进行源码分析之前，再次来回顾一下DispatcherServlet类图
+
+![DispatcherServlet结构图](springmvc执行流程.assets/DispatcherServlet结构图-7590849.png)
 
 > DispatcherServlet继承于HttpServlet
 >
 > FrameworkServlet中定义了所有的service、doGet、doPost、doPut、doDelete、doOptions、doTrace的相关方法
 
-回顾下先前定义的servlet
-
-```java
-<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee
-                      http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
-         version="3.1"
-         metadata-complete="true">
-
-    <servlet>
-        <servlet-name>dispatch</servlet-name>
-        <servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
-        <load-on-startup>1</load-on-startup>
-    </servlet>
-    <servlet-mapping>
-        <servlet-name>dispatch</servlet-name>
-        <url-pattern>/</url-pattern>
-    </servlet-mapping>
-</web-app>
-```
 
 
-
-接下来开始正式分析请求来之后的执行流程
+这里以get请求为例子，下面我们开始进行源码分析
 
 FrameworkServlet#doGet
 

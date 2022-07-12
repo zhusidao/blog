@@ -290,7 +290,7 @@ private static boolean shouldParkAfterFailedAcquire(Node pred, Node node) {
 
 > 1.当前添加的node节点的前一个节点如果状态为SIGNAL(-1)，返回true，执行parkAndCheckInterrupt使先当前线程进入block状态
 >
-> 2.如果前一个节点的状态大于0（说明为1，已取消状态），就将队列前面的状态大于1的节点都剔除掉
+> 2.如果前一个节点的状态大于0（已取消状态），就将队列前面的状态大于1的节点都剔除掉
 >
 > 3.否则就将前一个节点的状态变为SIGNAL(-1)
 

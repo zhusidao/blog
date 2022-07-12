@@ -1,4 +1,4 @@
-# bean初始化
+# IOC源码第三篇-bean初始化
 
 上篇[populateBean()](https://github.com/zhusidao/zhusidao.github.io/wiki/bean%E5%B1%9E%E6%80%A7%E8%B5%8B%E5%80%BC)主要是xml配置的属性值赋予、扩属性值注入，本篇接着上篇的属性实例化之后继续分析，本篇是介绍bean的初始化
 

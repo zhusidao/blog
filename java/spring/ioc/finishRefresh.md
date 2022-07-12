@@ -1,4 +1,4 @@
-# finishRefresh
+# IOC源码第五篇-finishRefresh
 
 前面的篇幅已经结束了spring的 bean注册->bean实例化->bean属性赋值->bean初始化，本篇开始介绍**finishRefresh()**方法
 
