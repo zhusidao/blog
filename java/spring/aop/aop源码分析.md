@@ -83,7 +83,7 @@ public Object postProcessBeforeInstantiation(Class<?> beanClass, String beanName
       if (this.advisedBeans.containsKey(cacheKey)) {
          return null;
       }
-      // 实现Advice、Advisor、Pointcut、AopInfrastructureBean || 带有@Aspect注解
+      // 带有@Aspect注解 || 实现Advice、Advisor、Pointcut、AopInfrastructureBean
       // bean应该跳过，则标记为无需处理，并返回
       if (isInfrastructureClass(beanClass) || shouldSkip(beanClass, beanName)) {
          this.advisedBeans.put(cacheKey, Boolean.FALSE);

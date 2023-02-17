@@ -1,6 +1,6 @@
 # ioc源码分析第二篇
 
-**前言**：[上一篇](https://github.com/zhusidao/zhusidao.github.io/wiki/bean%E6%B3%A8%E5%86%8C)介绍完了invokeBeanFactoryPostProcessors()方法，简单总结：该方法就是主要是介绍整个Bean的注册流程，接着refresh()方法接着往下分析，开始介绍bean的**实例化**流程，本篇主要是介绍构造方法进行实例化，本篇是从registerBeanPostProcessors()往下面开始分析：
+**前言**：[上一篇](https://github.com/zhusidao/zhusidao.github.io/wiki/bean%E6%B3%A8%E5%86%8C)介绍完了invokeBeanFactoryPostProcessors()方法，简单总结：该方法就是主要是介绍整个Bean的注册流程，接着refresh()方法接着往下分析，开始介绍bean的**实例化**流程，本篇主要是介绍构造方法进行实例化，本篇是从	()往下面开始分析：
 
 ```java
 @Override

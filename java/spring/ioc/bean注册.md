@@ -952,6 +952,8 @@ public static void invokeBeanFactoryPostProcessors(
 >
 > <T extends BeanDefinitionRegistryPostProcessor>#postProcessBeanDefinitionRegistry -> 
 >
+> 
+>
 > getBeanFactoryPostProcessors<BeanDefinitionRegistryPostProcessors>()#postProcessBeanFactory ->
 >
 > <T extends BeanDefinitionRegistryPostProcessor & PriorityOrdered>#postProcessBeanFactory ->
@@ -2035,7 +2037,7 @@ private void loadBeanDefinitionsForConfigurationClass(
       return;
    }
 	 /*
-	  * 该配置类是否是经由@Import引入或注册由于被嵌套（该内部类也要求是配置类）在另一个配置类内
+      * 该配置类是否是经由@Import引入或注册由于被嵌套（该内部类也要求是配置类）在另一个配置类内
 	  */
    if (configClass.isImported()) {
       registerBeanDefinitionForImportedConfigurationClass(configClass);
@@ -2046,8 +2048,7 @@ private void loadBeanDefinitionsForConfigurationClass(
    }
 	 // 加载当前ConfigurationClass中@ImportResource引入的xml文件中的Bean定义
    loadBeanDefinitionsFromImportedResources(configClass.getImportedResources());
-   // 取出实现了ImportBeanDefinitionRegistrar接口的类，执行其registerBeanDefinitions方法。
-   // 注册相应的BeanDefinition到仓库中
+   // 取出实现了ImportBeanDefinitionRegistrar接口的类，执行其registerBeanDefinitions方法。	
    loadBeanDefinitionsFromRegistrars(configClass.getImportBeanDefinitionRegistrars());
 }
 ```
